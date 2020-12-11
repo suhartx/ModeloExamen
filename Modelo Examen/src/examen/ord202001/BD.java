@@ -4,13 +4,15 @@ import java.sql.*;
 import java.util.*;
 import java.util.logging.*;
 
+
+
 /** Clase de gestión de base de datos del examen 201911
  * @author andoni.eguiluz @ ingenieria.deusto.es
  */
 public class BD {
 	
 	private static boolean LOGGING = true;
-	private static boolean ACTIVADA = false;
+	private static boolean ACTIVADA = true;
 
 	/** Inicializa una BD SQLITE y devuelve una conexión con ella
 	 * @param nombreBD	Nombre de fichero de la base de datos
@@ -318,4 +320,214 @@ public class BD {
 			logger.log( level, msg, excepcion );
 	}
 	
+	
+
+	///////////////////////////////////////////////////////////////////////
+	//						T3Ext										 //
+	///////////////////////////////////////////////////////////////////////
+
+
+
+	public static Statement usarCrearTablasT3BD( Connection con, boolean cargar, Tabla tabla ) {
+		if (!ACTIVADA) return null;
+		try {
+			Statement statement = con.createStatement();
+			statement.setQueryTimeout(30);  // poner timeout 30 msg
+			try {
+				// Creación de tablas
+				String createStat = "create table if not exists TIPODS " +
+						"(idTipo integer primary key autoincrement" + // Identificador de tipo (número único)
+						", tipo varchar(50)" +                  // Nombre de tipo
+						", contador integer(50)" +                   // Contador de tipo de tipo
+						");";
+				log( Level.INFO, "BD creación de tabla\t" + createStat, null );
+				statement.executeUpdate( createStat );
+
+
+				createStat = "create table if not exists VALORD " +
+						"(idValor integer primary key autoincrement" + // Identificador de dato (número único)
+						", valor real" +                      // clave externa de tipo (identificador)
+						", idTipo integer" +                      // Campos correspondientes a las columnas de la tabla
+						", FOREIGN KEY(idTipo) REFERENCES TIPODS(idTipo)" + // Clave de referencia hacia la tabla tipoDS
+						");";
+				log( Level.INFO, "BD creación de tabla\t" + createStat, null );
+				statement.executeUpdate( createStat );
+				if (cargar) {
+					
+					
+					insertarTipoDS( statement, tabla );
+					insertarValorD( statement, tabla );
+				}
+			} catch (SQLException e) {} // Tabla ya existe. Nada que hacer
+			return statement;
+		} catch (SQLException e) {
+			log( Level.SEVERE, "Error en creación de base de datos", e );
+			return null;
+		}
+	}	
+	public static boolean insertarTipoDS( Statement st, Tabla tabla ) {
+		if (!ACTIVADA) return false;
+		String sentSQL = "";
+		try {
+
+			// Crear lista de valores
+			HashSet<TipoDato> vals = new HashSet<>();
+			for (int fila=0; fila<tabla.size(); fila++) {
+				Object val = tabla.get( fila, 5 );
+				if (val!=null) {
+					vals.add( new TipoDato(val.toString()));
+				}
+			}
+			// Comprobar si cada valor existe o no
+			Iterator<TipoDato> iterador = vals.iterator();
+	       while (iterador.hasNext()) { 
+	    	   TipoDato t = iterador.next();
+				sentSQL = "select * from TIPODS where tipo='" + t.getTipoDato() + "';";
+				ResultSet rs = st.executeQuery( sentSQL );
+				log( Level.INFO, "BD TIPODS buscado\t" + sentSQL, null );
+				if (rs.next()) { // Existe: no hay nada que hacer
+				} else { // No existe: hay que hacer un insert
+					rs.close();
+					sentSQL = "insert into Tipo (tipo, contador) values (" +
+							"'" + t.getTipoDato() + "', " +   
+							"'" + t.getContador() + "'"+
+							");";
+					int val = st.executeUpdate( sentSQL );
+					log( Level.INFO, "BD añadida " + val + " fila\t" + sentSQL, null );
+					if (val!=1) {  // Se tiene que añadir 1 - error si no
+						log( Level.SEVERE, "Error en insert de BD\t" + sentSQL, null );
+						return false;  
+					}
+				}
+	       }
+			return true;
+		} catch (SQLException e) {
+			log( Level.SEVERE, "Error en BD\t" + sentSQL, e );
+			return false;
+		}
+	}
+	
+	public static boolean insertarValorD( Statement st, Tabla tabla ) {
+		if (!ACTIVADA) return false;
+		String sentSQL = "";
+		
+		try {
+
+			for (int fila=0; fila<tabla.size(); fila++) {
+				// Buscar el tipo
+				Object valTipo = tabla.get(fila,1);
+				if (valTipo==null) continue; // Si el tipo es nulo no se puede insertar
+				sentSQL = "select * from TIPODS where tipo='" + valTipo + "';";
+				ResultSet rs = st.executeQuery( sentSQL );
+				log( Level.INFO, "BD tipo buscado\t" + sentSQL, null );
+				int idTipo = 0;
+				if (rs.next()) { // Existe
+					idTipo = rs.getInt( "id" );
+					rs.close();
+				} else { // No existe: no se puede actualizar
+					rs.close();
+					log( Level.SEVERE, "Error en búsqueda de tipo de BD\t" + sentSQL, null );
+					return false;
+				}
+				// T3
+				// T3 - Comprobar si el valor existe si su campo nick coincide
+				sentSQL = "select * from Dato where idTipo=" + idTipo + " and nick ='" + tabla.get(fila,"nick") + "';";
+				rs = st.executeQuery( sentSQL );
+				log( Level.INFO, "BD dato buscado\t" + sentSQL, null );
+				if (rs.next()) { // Existe: hay que hacer un update
+					rs.close();
+					// T3 - Operación nueva 
+					sentSQL = "update Dato set";
+					for (int col=1; col<tabla.getWidth(); col++) {
+						String cab = tabla.getCabecera(col);
+						if (!cab.equals("idTipo") && !cab.equals("nick")) {  // Si la columna no es ni idTipo ni nick
+							sentSQL += " " + cab + "=" + tabla.get(fila,cab);  // Sentencia campo=valor del update
+							if (col<tabla.getWidth()-1) sentSQL += ",";  // Se añade una coma en todas menos en la última
+						}
+					}
+					sentSQL += " where idTipo=" + idTipo + " and nick ='" + tabla.get(fila,"nick") + "';";
+				} else { // No existe: hay que hacer un insert
+					// T3 - esto es lo que se hacía antes de la T3
+					rs.close();
+					String cabs = "";
+					for (int col=1; col<tabla.getWidth(); col++) {
+						cabs += tabla.getCabecera(col);
+						if (col<tabla.getWidth()-1) cabs += ", ";
+					}
+					sentSQL = "insert into Dato (idTipo, " + cabs +
+							") values (" + idTipo + ", ";
+					for (int col=1; col<tabla.getWidth(); col++) {
+						Object o = tabla.get(fila,col);
+						if (o==null) {
+							sentSQL += "NULL";
+						} else if (tabla.getTipos().get(col)==String.class) {
+							sentSQL += ("'" + o + "'");
+						} else {
+							sentSQL += (o.toString());
+						}
+						if (col<tabla.getWidth()-1) {
+							sentSQL += ", ";
+						}
+					}
+					sentSQL += ");";
+				}
+				int val = st.executeUpdate( sentSQL );
+				log( Level.INFO, "BD guardada " + val + " fila\t" + sentSQL, null );
+				if (val!=1) {  // Se tiene que añadir o modificar 1 - error si no
+					log( Level.SEVERE, "Error en insert o update de BD\t" + sentSQL, null );
+					return false;  
+				}
+			}
+			return true;
+		} catch (SQLException e) {
+			log( Level.SEVERE, "Error en BD\t" + sentSQL, e );
+			return false;
+		}
+	}
+	public static class TipoDato{
+		String tipoDato;
+		int Contador;
+		public TipoDato(String tipoDato) {
+			super();
+			this.tipoDato = tipoDato;
+		}
+		public String getTipoDato() {
+			return tipoDato;
+		}
+		public void setTipoDato(String tipoDato) {
+			this.tipoDato = tipoDato;
+		}
+		public int getContador() {
+			return Contador;
+		}
+		public void setContador(int contador) {
+			Contador = contador;
+		}
+		
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + ((tipoDato == null) ? 0 : tipoDato.hashCode());
+			return result;
+		}
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			TipoDato other = (TipoDato) obj;
+			if (tipoDato == null) {
+				if (other.tipoDato != null)
+					return false;
+			} else if (!tipoDato.equals(other.tipoDato))
+				return false;
+			other.Contador++;
+			return true;
+		}
+	}
 }
+

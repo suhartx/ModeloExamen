@@ -9,7 +9,11 @@ import java.sql.Connection;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map.Entry;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 import javax.swing.JOptionPane;
@@ -32,11 +36,17 @@ public class PruebaTablas {
 	public static void main( String[] args ) {
 		SwingUtilities.invokeLater( () -> {
 			sacaVentanasPrueba();
+			
+			
 		} );
 	}
 	
 	private static Connection conn = null;
 	private static Statement stat = null;
+	
+	private static Connection connT3 = null;	
+	private static Statement statT3 = null;
+	
 	
 	private static void sacaVentanasPrueba() {
 		try {
@@ -214,10 +224,87 @@ public class PruebaTablas {
 					}
 				}
 			} );
+			
+			// T2Ext
+			vgt.addMenuAccion("T2Ext", (e) -> {
+
+				TreeMap<String,ArrayList<Contador>> mapa = new TreeMap<>();
+				
+				for (int fila=0; fila<tabla.size(); fila++) {
+					String parImpar = (String) tabla.get( fila, "tipo" );
+					Integer datoI = (Integer) tabla.get( fila, "datoI" );
+					if (datoI!=null) {
+						ArrayList<Contador> lista = mapa.get( parImpar );
+						if (lista==null) {
+							lista = new ArrayList<Contador>();
+							mapa.put( parImpar, lista );
+						}
+						
+						
+						boolean encontrado = false;
+						for (Contador cont : lista) {
+							if (cont.getValor() == datoI) {
+								cont.incContador();
+								encontrado = true;
+								break;
+							}
+						}
+						if (!encontrado) {
+							lista.add( new Contador( datoI ) );
+						}
+					}
+				}
+				
+				for(String clave : mapa.keySet()) { 
+					
+					System.out.println("Valores "+clave);
+					ArrayList<Contador> nota =mapa.get(clave);
+					nota.sort(new Comparator<Contador>() {
+						@Override
+						public int compare(Contador o1, Contador o2) {
+							int ret = o2.getContador()-o1.getContador();
+							if (ret == 0) {
+								ret = o1.getValor()-o2.getValor();
+							}
+							return ret;
+						}
+						
+					});
+					
+					
+					for (Contador c : nota) {
+						System.out.println(c.valor+" (cont: "+ c.contador+")");
+						
+					}
+
+					}
+
+			
+				
+				
+				
+			});
+			
+			vgt.addMenuAccion("T3Ext", (e) -> {
+				
+				connT3 = BD.initBD( "T3Ext.bd" );
+				
+				statT3 =BD.usarCrearTablasT3BD(connT3, true, tabla);
+				
+				
+				vgt.addWindowListener( new WindowAdapter() { // Cerrar la bd al cerrar la ventana
+					@Override
+					public void windowClosed(WindowEvent e1) {
+						BD.cerrarBD( connT3, statT3 );
+					}
+				});
+			});
 
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+		
+		
 		
 	}
 	
@@ -245,5 +332,6 @@ public class PruebaTablas {
 			return v;
 		}
 	
+		
 
 }

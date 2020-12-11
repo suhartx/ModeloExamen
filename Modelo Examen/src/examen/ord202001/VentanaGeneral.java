@@ -114,4 +114,5 @@ public class VentanaGeneral extends JFrame {
 		menuAcciones.add( menuItem );
 	}
 	
+	
 }
